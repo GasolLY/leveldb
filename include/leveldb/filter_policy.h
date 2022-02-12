@@ -24,6 +24,17 @@ namespace leveldb {
 
 class Slice;
 
+/**过滤器，用于快速判断 查找的Key是否存在。默认采用布隆过滤器
+ * 
+ * 暴露的接口除了 FilterPolicy 接口类，还有 NewBloomFilterPolicy 函数，
+ * 其他代码中均使用 FilterPolicy。
+ * 这样的设计可以保证使用者可以自行定义策略类、方便地替换原有的布隆过滤器。
+ * 这种设计也称之为策略模式，将策略单独设计为一个类或接口，
+ * 不同的子类对应不同的策略方法。
+ * 
+ */
+
+
 class LEVELDB_EXPORT FilterPolicy {
  public:
   virtual ~FilterPolicy();
@@ -40,6 +51,7 @@ class LEVELDB_EXPORT FilterPolicy {
   //
   // Warning: do not change the initial contents of *dst.  Instead,
   // append the newly constructed filter to *dst.
+  // 根据给定的keys创建Filter
   virtual void CreateFilter(const Slice* keys, int n,
                             std::string* dst) const = 0;
 
@@ -48,6 +60,7 @@ class LEVELDB_EXPORT FilterPolicy {
   // the key was in the list of keys passed to CreateFilter().
   // This method may return true or false if the key was not on the
   // list, but it should aim to return false with a high probability.
+  // 注意函数名称的May，即存在 false positive的可能。
   virtual bool KeyMayMatch(const Slice& key, const Slice& filter) const = 0;
 };
 
@@ -65,6 +78,7 @@ class LEVELDB_EXPORT FilterPolicy {
 // ignores trailing spaces, it would be incorrect to use a
 // FilterPolicy (like NewBloomFilterPolicy) that does not ignore
 // trailing spaces in keys.
+// 默认采用bloom过滤器，推荐的bits_per_key参数为10，此时false positive rate约等于1%
 LEVELDB_EXPORT const FilterPolicy* NewBloomFilterPolicy(int bits_per_key);
 
 }  // namespace leveldb

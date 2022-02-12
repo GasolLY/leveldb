@@ -40,6 +40,28 @@ namespace {
 
 // An entry is a variable length heap-allocated structure.  Entries
 // are kept in a circular doubly linked list ordered by access time.
+
+//LRUCahce 的实现依靠双向环形链表和哈希表。
+//其中双向环形链表维护 Recently 属性，哈希表维护 Used 属性。
+//双向环形链表和哈希表的节点信息都存储于 LRUHandle 结构中.
+
+/**
+ * LRUCahce 的实现依靠双向环形链表和哈希表。
+ * 其中双向环形链表维护 Recently 属性，哈希表维护 Used 属性。
+ * 双向环形链表和哈希表的节点信息都存储于 LRUHandle 结构中. 
+ * 
+ * 
+ * value 为缓存存储的数据，类型无关；
+ * deleter 为键值对的析构函数指针；
+ * next_hash 为开放式哈希表中同一个桶下存储链表时使用的指针；
+ * next 和 prev 自然是双向环形链接的前后指针；
+ * charge 为当前节点的缓存费用，比如一个字符串的费用可能就是它的长度；
+ * key_length 为 key 的长度;
+ * in_cache 为节点是否在缓存里的标志；
+ * refs 为引用计数，当计数为 0 时则可以用 deleter 清理掉；
+ * hash 为 key 的哈希值；
+ * key_data 为变长的 key 数据，最小长度为 1，malloc 时动态指定长度。 
+ */
 struct LRUHandle {
   void* value;
   void (*deleter)(const Slice&, void* value);
@@ -67,6 +89,7 @@ struct LRUHandle {
 // table implementations in some of the compiler/runtime combinations
 // we have tested.  E.g., readrandom speeds up by ~5% over the g++
 // 4.4.3's builtin hashtable.
+//LevelDB实现了自己的简单Hash表。因为去除了移植性，所以速度更快。
 class HandleTable {
  public:
   HandleTable() : length_(0), elems_(0), list_(nullptr) { Resize(); }
@@ -105,13 +128,16 @@ class HandleTable {
  private:
   // The table consists of an array of buckets where each bucket is
   // a linked list of cache entries that hash into the bucket.
-  uint32_t length_;
-  uint32_t elems_;
-  LRUHandle** list_;
+  // 这个表由一个存储桶数组组成，每个存储桶是一个散列到存储桶中的缓存条目的链表。
+  uint32_t length_;   //存储桶的数量
+  uint32_t elems_;    //当前哈希表的实际元素个数
+  LRUHandle** list_;  //桶数组。实际存储的数据内容，底层结构
 
   // Return a pointer to slot that points to a cache entry that
   // matches key/hash.  If there is no such cache entry, return a
   // pointer to the trailing slot in the corresponding linked list.
+  // 根据指定的key与hash，返回对应的双重指针。
+  // (先根据Hash值与存储桶数目length_，找到list_中对应的桶，然后再根据hash与key寻找，避免hash冲突)
   LRUHandle** FindPointer(const Slice& key, uint32_t hash) {
     LRUHandle** ptr = &list_[hash & (length_ - 1)];
     while (*ptr != nullptr && ((*ptr)->hash != hash || key != (*ptr)->key())) {
@@ -120,6 +146,16 @@ class HandleTable {
     return ptr;
   }
 
+  /**
+   * Resize 则根据存储的节点数，对哈希表进行缩放。
+   * 如果不缩放，这样的结构会退化到链表的复杂度。
+   * 使用 2 的幂可以规避掉哈希值的模除，同样可以加速。
+   * Resize时会遍历节点，将其从原位置取出，重新计算哈希值放到新位置，
+   * 每次会加到桶中链表的头部。Resize 过程中链表需要拒绝其他请求。
+   * 
+   * 值得注意的是：新的桶的数目（新的length_）是根据 现有的存储的实际数据的个数 来决定的。
+   * 使得new_length >= 实际元素个数。
+   */
   void Resize() {
     uint32_t new_length = 4;
     while (new_length < elems_) {
@@ -177,11 +213,24 @@ class LRUCache {
   bool FinishErase(LRUHandle* e) EXCLUSIVE_LOCKS_REQUIRED(mutex_);
 
   // Initialized before use.
+  // 初始化的容量
   size_t capacity_;
 
   // mutex_ protects the following state.
+  // 锁,用来保护下列的状态
   mutable port::Mutex mutex_;
   size_t usage_ GUARDED_BY(mutex_);
+
+
+  /**
+   * LRUCache 中存储了两条链表，lru_ 和 in_use_，
+   * 分别记录普通节点和外部正在使用中的节点。外部正在使用中的节点是不可删除的，
+   * 将二者区分开也方便做对应的清理。Ref 和 Unref 分别增删引用计数，
+   * 并完成节点在 lru_ 和 in_use_ 的交换，以及计数为 0 时做最后的删除。
+   * 
+   * 双向链表，会将最新使用的节点放到链表的末端。这样在容量超标时，
+   * 删除链表头部的、长时间未用的节点即可。该逻辑实现于 Insert 函数的结尾。
+   */
 
   // Dummy head of LRU list.
   // lru.prev is newest entry, lru.next is oldest entry.
@@ -215,6 +264,8 @@ LRUCache::~LRUCache() {
   }
 }
 
+// 增加引用计数。
+// 若引用计数为1且in_cache==true，则将其从原链表中移除，添加到in_use链表的末尾。
 void LRUCache::Ref(LRUHandle* e) {
   if (e->refs == 1 && e->in_cache) {  // If on lru_ list, move to in_use_ list.
     LRU_Remove(e);
@@ -223,6 +274,8 @@ void LRUCache::Ref(LRUHandle* e) {
   e->refs++;
 }
 
+// 减少引用计数。
+// 若减少后引用计数为0，则删除对应空间。否则，将其从原链表中移除，添加到lru_链表的末尾
 void LRUCache::Unref(LRUHandle* e) {
   assert(e->refs > 0);
   e->refs--;
@@ -250,6 +303,7 @@ void LRUCache::LRU_Append(LRUHandle* list, LRUHandle* e) {
   e->next->prev = e;
 }
 
+//通过HandleTable哈希表查询，并添加引用计数
 Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash) {
   MutexLock l(&mutex_);
   LRUHandle* e = table_.Lookup(key, hash);
@@ -259,6 +313,7 @@ Cache::Handle* LRUCache::Lookup(const Slice& key, uint32_t hash) {
   return reinterpret_cast<Cache::Handle*>(e);
 }
 
+//减少引用计数
 void LRUCache::Release(Cache::Handle* handle) {
   MutexLock l(&mutex_);
   Unref(reinterpret_cast<LRUHandle*>(handle));
@@ -286,14 +341,18 @@ Cache::Handle* LRUCache::Insert(const Slice& key, uint32_t hash, void* value,
     e->in_cache = true;
     LRU_Append(&in_use_, e);
     usage_ += charge;
+    //在哈希表HandleTable中插入新节点，同时在链表中删除 table_.Insert()返回的旧节点
     FinishErase(table_.Insert(e));
   } else {  // don't cache. (capacity_==0 is supported and turns off caching.)
     // next is read by key() in an assert, so it must be initialized
     e->next = nullptr;
   }
+  // 双向链表，会将最新使用的节点放到链表的末端。
+  // 这样在容量超标时，删除链表头部的、长时间未用的节点即可。
   while (usage_ > capacity_ && lru_.next != &lru_) {
     LRUHandle* old = lru_.next;
     assert(old->refs == 1);
+    //若容量超标，在哈希表与链表中都删除对应的节点
     bool erased = FinishErase(table_.Remove(old->key(), old->hash));
     if (!erased) {  // to avoid unused variable when compiled NDEBUG
       assert(erased);
@@ -336,16 +395,22 @@ void LRUCache::Prune() {
 static const int kNumShardBits = 4;
 static const int kNumShards = 1 << kNumShardBits;
 
+// 分片LRUCache
+// LevelDB 默认将 LRUCache 分为2^4块，取哈希值的高 4 位作为分片的位置。
+// 分片可以提高查询和插入的速度，减少锁的压力，是提高缓存性能的常用方法。
 class ShardedLRUCache : public Cache {
  private:
+  //LRUCache的数组，包含2^4=16个LRUCache
   LRUCache shard_[kNumShards];
   port::Mutex id_mutex_;
   uint64_t last_id_;
 
+  // 对Slice进行Hash操作
   static inline uint32_t HashSlice(const Slice& s) {
     return Hash(s.data(), s.size(), 0);
   }
 
+  // 对hash值进行右移，仅保留高4位作为分片的位置
   static uint32_t Shard(uint32_t hash) { return hash >> (32 - kNumShardBits); }
 
  public:
@@ -396,6 +461,7 @@ class ShardedLRUCache : public Cache {
 
 }  // end anonymous namespace
 
+// NewLRUCache函数返回SharedLRUCache
 Cache* NewLRUCache(size_t capacity) { return new ShardedLRUCache(capacity); }
 
 }  // namespace leveldb

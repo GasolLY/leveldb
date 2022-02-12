@@ -36,6 +36,8 @@
 
 namespace leveldb {
 
+//跳表的实现
+
 template <typename Key, class Comparator>
 class SkipList {
  private:
@@ -46,7 +48,7 @@ class SkipList {
   // and will allocate memory using "*arena".  Objects allocated in the arena
   // must remain allocated for the lifetime of the skiplist object.
   explicit SkipList(Comparator cmp, Arena* arena);
-
+  // 不允许拷贝构造
   SkipList(const SkipList&) = delete;
   SkipList& operator=(const SkipList&) = delete;
 
@@ -58,6 +60,7 @@ class SkipList {
   bool Contains(const Key& key) const;
 
   // Iteration over the contents of a skip list
+  // 定义迭代器类，用于对跳表进行操作，包含SkipList*与Node*,2个成员变量
   class Iterator {
    public:
     // Initialize an iterator over the specified list.
@@ -97,6 +100,7 @@ class SkipList {
   };
 
  private:
+  //记录SkipList最大的高度
   enum { kMaxHeight = 12 };
 
   inline int GetMaxHeight() const {
@@ -126,16 +130,20 @@ class SkipList {
   Node* FindLast() const;
 
   // Immutable after construction
+  // 比较器
   Comparator const compare_;
+  // 跳表的内存池
   Arena* const arena_;  // Arena used for allocations of nodes
-
+  // SkipList 的前置哨兵节点
   Node* const head_;
 
   // Modified only by Insert().  Read racily by readers, but stale
   // values are ok.
+  // 最大高度
   std::atomic<int> max_height_;  // Height of the entire list
 
   // Read/written only by Insert().
+  // 随机数生成器
   Random rnd_;
 };
 
@@ -144,16 +152,19 @@ template <typename Key, class Comparator>
 struct SkipList<Key, Comparator>::Node {
   explicit Node(const Key& k) : key(k) {}
 
+  // 存储主键Key
   Key const key;
 
   // Accessors/mutators for links.  Wrapped in methods so we can
   // add the appropriate barriers as necessary.
+  // 获取当前节点在指定level的下一个节点
   Node* Next(int n) {
     assert(n >= 0);
     // Use an 'acquire load' so that we observe a fully initialized
     // version of the returned Node.
     return next_[n].load(std::memory_order_acquire);
   }
+  // 将当前节点在指定level的下一个节点设置为x
   void SetNext(int n, Node* x) {
     assert(n >= 0);
     // Use a 'release store' so that anybody who reads through this
@@ -161,6 +172,7 @@ struct SkipList<Key, Comparator>::Node {
     next_[n].store(x, std::memory_order_release);
   }
 
+  // 无内存障碍版本的实现
   // No-barrier variants that can be safely used in a few locations.
   Node* NoBarrier_Next(int n) {
     assert(n >= 0);
@@ -173,14 +185,19 @@ struct SkipList<Key, Comparator>::Node {
 
  private:
   // Array of length equal to the node height.  next_[0] is lowest level link.
+  //1.这里提前使用声明分配1个对象的内存，是因为，第0层数据肯定是都有的，而且，是全部数据
+  //2.使用数组方式，那么后续分配的内存就是连续的，cache-friend
   std::atomic<Node*> next_[1];
 };
 
 template <typename Key, class Comparator>
 typename SkipList<Key, Comparator>::Node* SkipList<Key, Comparator>::NewNode(
     const Key& key, int height) {
+  //因为Node中的成员变量已定义1个Node*，所以此处只需height-1
   char* const node_memory = arena_->AllocateAligned(
       sizeof(Node) + sizeof(std::atomic<Node*>) * (height - 1));
+  // 定位new ，空间换时间，从LevelDB的内存池Arena中开辟的node_memory中，new Node(key)
+  // 与常规new相比，不需要申请空间，仅需调用构造函数，优化CPU缓存
   return new (node_memory) Node(key);
 }
 
@@ -260,14 +277,21 @@ typename SkipList<Key, Comparator>::Node*
 SkipList<Key, Comparator>::FindGreaterOrEqual(const Key& key,
                                               Node** prev) const {
   Node* x = head_;
+  // level从0开始编码，0 —— MaxHeight-1
   int level = GetMaxHeight() - 1;
+  // 从最高层level开始查找
   while (true) {
+    // 定位到当前level的下一个节点
     Node* next = x->Next(level);
+    // key 大于next的key，说明不在当前区间
     if (KeyIsAfterNode(key, next)) {
       // Keep searching in this list
       x = next;
     } else {
+      // key在当前区间段内，则向更低的level中继续查找
+      // 在查找的同时，对传入的参数prev进行设置，设置prev节点
       if (prev != nullptr) prev[level] = x;
+      // 在最底层的level中找到相应位置
       if (level == 0) {
         return next;
       } else {
@@ -335,14 +359,17 @@ template <typename Key, class Comparator>
 void SkipList<Key, Comparator>::Insert(const Key& key) {
   // TODO(opt): We can use a barrier-free variant of FindGreaterOrEqual()
   // here since Insert() is externally synchronized.
+  // 声明prev节点数组，代表插入位置的前一个节点
   Node* prev[kMaxHeight];
+  //使用FindGreaterOrEqual函数，找到第一个大于等于插入key的位置
   Node* x = FindGreaterOrEqual(key, prev);
 
   // Our data structure does not allow duplicate insertion
   assert(x == nullptr || !Equal(key, x->key));
-
+  // 使用随机数获取该节点的插入高度
   int height = RandomHeight();
   if (height > GetMaxHeight()) {
+    // 大于当前SkipList的最高高度的话，将多出来的高度的prev设置为哨兵节点
     for (int i = GetMaxHeight(); i < height; i++) {
       prev[i] = head_;
     }
@@ -353,14 +380,17 @@ void SkipList<Key, Comparator>::Insert(const Key& key) {
     // the loop below.  In the former case the reader will
     // immediately drop to the next level since nullptr sorts after all
     // keys.  In the latter case the reader will use the new node.
+    // 更新max_height_
     max_height_.store(height, std::memory_order_relaxed);
   }
-
+  // 创建要插入的节点对象x
   x = NewNode(key, height);
   for (int i = 0; i < height; i++) {
     // NoBarrier_SetNext() suffices since we will add a barrier when
     // we publish a pointer to "x" in prev[i].
+    // 首先将x的next指向prev的下一个节点
     x->NoBarrier_SetNext(i, prev[i]->NoBarrier_Next(i));
+    // 将prev指向x
     prev[i]->SetNext(i, x);
   }
 }

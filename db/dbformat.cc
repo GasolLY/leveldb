@@ -15,9 +15,11 @@ namespace leveldb {
 static uint64_t PackSequenceAndType(uint64_t seq, ValueType t) {
   assert(seq <= kMaxSequenceNumber);
   assert(t <= kValueTypeForSeek);
+  // 可以发现sequence占用64位中的高56位，type占用低8位
   return (seq << 8) | t;
 }
 
+//将key序列化，追加到result中。先追加 数据内容与数据大小，然后将64位合成的序列号加入
 void AppendInternalKey(std::string* result, const ParsedInternalKey& key) {
   result->append(key.user_key.data(), key.user_key.size());
   PutFixed64(result, PackSequenceAndType(key.sequence, key.type));
@@ -44,15 +46,21 @@ const char* InternalKeyComparator::Name() const {
   return "leveldb.InternalKeyComparator";
 }
 
+// 比较函数(比较2个InternalKey，即数据内容与合成序列号共同存储在String rep_)
 int InternalKeyComparator::Compare(const Slice& akey, const Slice& bkey) const {
   // Order by:
   //    increasing user key (according to user-supplied comparator)
   //    decreasing sequence number
   //    decreasing type (though sequence# should be enough to disambiguate)
+  
+  // 首先比较User Key
+  // Compare类直接通过Slice的compare函数进行比较
   int r = user_comparator_->Compare(ExtractUserKey(akey), ExtractUserKey(bkey));
   if (r == 0) {
+    // 若User Key字符串内容相等，则比较合成序列号
     const uint64_t anum = DecodeFixed64(akey.data() + akey.size() - 8);
     const uint64_t bnum = DecodeFixed64(bkey.data() + bkey.size() - 8);
+    // 合成序列号较大的，反而比较的结果是较小的
     if (anum > bnum) {
       r = -1;
     } else if (anum < bnum) {

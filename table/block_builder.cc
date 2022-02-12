@@ -37,6 +37,7 @@
 
 namespace leveldb {
 
+// 见最上方注释
 BlockBuilder::BlockBuilder(const Options* options)
     : options_(options), restarts_(), counter_(0), finished_(false) {
   assert(options->block_restart_interval >= 1);
@@ -58,6 +59,7 @@ size_t BlockBuilder::CurrentSizeEstimate() const {
           sizeof(uint32_t));                     // Restart array length
 }
 
+// 将所有的restart pointer的位置和restart pointer的数量写到buffer_里
 Slice BlockBuilder::Finish() {
   // Append restart array
   for (size_t i = 0; i < restarts_.size(); i++) {

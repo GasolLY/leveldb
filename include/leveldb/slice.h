@@ -23,7 +23,7 @@
 #include "leveldb/export.h"
 
 namespace leveldb {
-
+//字符串处理类
 class LEVELDB_EXPORT Slice {
  public:
   // Create an empty slice.
@@ -64,6 +64,7 @@ class LEVELDB_EXPORT Slice {
     size_ = 0;
   }
 
+  //移除数据的前n位
   // Drop the first "n" bytes from this slice.
   void remove_prefix(size_t n) {
     assert(n <= size());
@@ -79,12 +80,13 @@ class LEVELDB_EXPORT Slice {
   //   == 0 iff "*this" == "b",
   //   >  0 iff "*this" >  "b"
   int compare(const Slice& b) const;
-
+  
+  //判断参数x是否是该slice的前缀
   // Return true iff "x" is a prefix of "*this"
   bool starts_with(const Slice& x) const {
     return ((size_ >= x.size_) && (memcmp(data_, x.data_, x.size_) == 0));
   }
-
+//成员变量：data_存储数据地址;size_记录数据长度
  private:
   const char* data_;
   size_t size_;

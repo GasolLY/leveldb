@@ -17,6 +17,7 @@ class WritableFile;
 
 namespace log {
 
+// 日志的写入操作对应的类
 class Writer {
  public:
   // Create a writer that will append data to "*dest".
@@ -34,6 +35,8 @@ class Writer {
 
   ~Writer();
 
+  // log::Writer类的公开的接口只有log::Writer::AddRecord(),
+  // 会被DB::Write()调用
   Status AddRecord(const Slice& slice);
 
  private:
@@ -45,6 +48,7 @@ class Writer {
   // crc32c values for all supported record types.  These are
   // pre-computed to reduce the overhead of computing the crc of the
   // record type stored in the header.
+  // 私有数组，存储了预先计算的几种类型的CRC32校验值
   uint32_t type_crc_[kMaxRecordType + 1];
 };
 

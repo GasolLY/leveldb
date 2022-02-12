@@ -154,14 +154,14 @@ class Version {
   std::vector<FileMetaData*> files_[config::kNumLevels];
 
   // Next file to compact based on seek stats.
-  FileMetaData* file_to_compact_;
-  int file_to_compact_level_;
+  FileMetaData* file_to_compact_; // 准备合并的文件
+  int file_to_compact_level_;     // 准备合并的文件的level
 
   // Level that should be compacted next and its compaction score.
   // Score < 1 means compaction is not strictly needed.  These fields
   // are initialized by Finalize().
-  double compaction_score_;
-  int compaction_level_;
+  double compaction_score_;       // 合并分数
+  int compaction_level_;          // 需要执行合并的level
 };
 
 class VersionSet {

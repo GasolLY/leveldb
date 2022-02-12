@@ -29,6 +29,7 @@ class Block {
   Iterator* NewIterator(const Comparator* comparator);
 
  private:
+  // 核心 迭代器
   class Iter;
 
   uint32_t NumRestarts() const;

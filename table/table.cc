@@ -42,6 +42,7 @@ Status Table::Open(const Options& options, RandomAccessFile* file,
     return Status::Corruption("file is too short to be an sstable");
   }
 
+  //读取文件尾部的Footer
   char footer_space[Footer::kEncodedLength];
   Slice footer_input;
   Status s = file->Read(size - Footer::kEncodedLength, Footer::kEncodedLength,
@@ -53,6 +54,7 @@ Status Table::Open(const Options& options, RandomAccessFile* file,
   if (!s.ok()) return s;
 
   // Read the index block
+  // 通过Footer::index_handle()读取index_block内容到内存中index_block_contents
   BlockContents index_block_contents;
   ReadOptions opt;
   if (options.paranoid_checks) {
@@ -63,6 +65,7 @@ Status Table::Open(const Options& options, RandomAccessFile* file,
   if (s.ok()) {
     // We've successfully read the footer and the index block: we're
     // ready to serve requests.
+    // 生成新的Block类实例、Rep类实例、Table类实例
     Block* index_block = new Block(index_block_contents);
     Rep* rep = new Table::Rep;
     rep->options = options;
@@ -205,6 +208,26 @@ Iterator* Table::BlockReader(void* arg, const ReadOptions& options,
   return iter;
 }
 
+/**
+ * Table::NewIterator 中会构造一个二级迭代器，
+ * 第一级自然是 index_block 的迭代器，
+ * 并且提供了第二级迭代器的创建函数 Table::BlockReader。
+ * 
+ * 该函数的第一个参数实际上为 Table 对象的指针，
+ * 第三个参数是 index_block 键值对中的 Value，
+ * 也就是对应的 Data Block Handle。
+ * 
+ * 如果不考虑缓存部分，代码还是很容易理解的：
+ * 首先解析对应的 BlockHandle，据此读取 block，
+ * 创建迭代器并且注册迭代器清理函数 DeleteBlock，
+ * 当删除迭代器时删除对应的 block。
+ * 当考虑缓存时，可以回忆下系列第一篇介绍的 LRUCache 再来看代码：
+ * 使用 cache_id 和 handle.offset 构建一个缓存的 Key，
+ * 将 block 作为缓存的 Value，后者的清理函数为 DeleteCachedBlock；
+ * 当前使用 block 创建迭代器增加了 block 的引用计数，
+ * 当迭代器析构时需要调用 ReleaseBlock 以减少缓存的 block 的引用计数。
+ * 这样就非常合理且高效了
+ */
 Iterator* Table::NewIterator(const ReadOptions& options) const {
   return NewTwoLevelIterator(
       rep_->index_block->NewIterator(rep_->options.comparator),

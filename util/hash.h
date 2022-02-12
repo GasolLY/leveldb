@@ -11,7 +11,7 @@
 #include <cstdint>
 
 namespace leveldb {
-
+//Hash函数，每次按照四字节长度对参数data进行Hash
 uint32_t Hash(const char* data, size_t n, uint32_t seed);
 
 }  // namespace leveldb

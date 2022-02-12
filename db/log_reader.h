@@ -17,6 +17,7 @@ class SequentialFile;
 
 namespace log {
 
+//日志的读取操作对应的类
 class Reader {
  public:
   // Interface for reporting errors.

@@ -11,6 +11,8 @@
 namespace leveldb {
 
 namespace {
+// 合并迭代器 MergingIterator，将会在多 Sorted Table 文件的遍历中使用到。
+// 该迭代器管理 n 个子迭代器，Next 和 Seek 操作时齐头并进、选择最小的那个
 class MergingIterator : public Iterator {
  public:
   MergingIterator(const Comparator* comparator, Iterator** children, int n)

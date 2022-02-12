@@ -20,6 +20,8 @@ struct ReadOptions;
 
 // BlockHandle is a pointer to the extent of a file that stores a data
 // block or a meta block.
+// BlockHandle本质上是一个指针，指向存储了数据块或元数据块的文件内容
+// BlockBuilder 将 Block 的数据写到字节流中，当需要进行解析时，必须知道其起始位置和长度，以便于读取复活点信息。
 class BlockHandle {
  public:
   // Maximum encoding length of a BlockHandle
@@ -45,6 +47,7 @@ class BlockHandle {
 
 // Footer encapsulates the fixed information stored at the tail
 // end of every table file.
+// Footer用来存储两个BlockHandle:metaindex_handle_和index_handle_
 class Footer {
  public:
   // Encoded length of a Footer.  Note that the serialization of a

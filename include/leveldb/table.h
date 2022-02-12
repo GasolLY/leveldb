@@ -60,6 +60,7 @@ class LEVELDB_EXPORT Table {
 
  private:
   friend class TableCache;
+  //pImpl范式
   struct Rep;
 
   static Iterator* BlockReader(void*, const ReadOptions&, const Slice&);

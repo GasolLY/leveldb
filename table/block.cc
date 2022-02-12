@@ -17,6 +17,9 @@
 
 namespace leveldb {
 
+// 因为 BlockBuilder类中提到，Block的组织格式
+// Block的尾部是Trailer，Trailer由uint32_t[]与uint32_t组成，
+// 分别存储每一个restart pointer与restart pointer的总数量
 inline uint32_t Block::NumRestarts() const {
   assert(size_ >= sizeof(uint32_t));
   return DecodeFixed32(data_ + size_ - sizeof(uint32_t));
@@ -34,6 +37,7 @@ Block::Block(const BlockContents& contents)
       // The size is too small for NumRestarts()
       size_ = 0;
     } else {
+      // 存储restart pointer数组的起始位置
       restart_offset_ = size_ - (1 + NumRestarts()) * sizeof(uint32_t);
     }
   }
@@ -52,6 +56,9 @@ Block::~Block() {
 //
 // If any errors are detected, returns nullptr.  Otherwise, returns a
 // pointer to the key delta (just past the three decoded values).
+// 解析条目时，首先假设 shared、non_shared 和 value_length 都小于 128，
+// 尝试按照按字节读取长度以提高解析速度。在大部分情况下该规则都是满足的，
+// 当少数情况出现超长的串时，会回退到普通的 GetVarint32Ptr
 static inline const char* DecodeEntry(const char* p, const char* limit,
                                       uint32_t* shared, uint32_t* non_shared,
                                       uint32_t* value_length) {
@@ -74,6 +81,16 @@ static inline const char* DecodeEntry(const char* p, const char* limit,
   return p;
 }
 
+/**
+ * Block 的字节流存储于 data_ 中；
+ * restarts_ 和 num_restarts_ 存储复活点列表的偏移和数量；
+ * current_ 存储当前迭代器的偏移，
+ * restart_index_ 存储 current_ 前面最近的复活点偏移；
+ * key_ 和 value_ 存储键值对。
+ * 
+ * 注意 key_ 是 std::string，因为有共享前缀，需要存储中间恢复的 Key，
+ * 而 value_ 可以直接从 data_ 中截取。
+ */
 class Block::Iter : public Iterator {
  private:
   const Comparator* const comparator_;
@@ -93,15 +110,21 @@ class Block::Iter : public Iterator {
   }
 
   // Return the offset in data_ just past the end of the current entry.
+  // 函数 NextEntryOffset 根据当前的 value 的位置和大小计算下一个键值对的起始位置，
+  // 因为每个条目最后存储的是 value
   inline uint32_t NextEntryOffset() const {
     return (value_.data() + value_.size()) - data_;
   }
 
+  // 函数 GetRestartPoint 读取第 index 个复活点的位置
   uint32_t GetRestartPoint(uint32_t index) {
     assert(index < num_restarts_);
     return DecodeFixed32(data_ + restarts_ + index * sizeof(uint32_t));
   }
 
+  // 函数 SeekToRestartPoint 将当前的 key_ 清空、
+  // 设定 restart_index_ 并将 value_ 设为复活点前的空串，
+  // 以便于执行 NextEntryOffset 时获得对应复活点偏移
   void SeekToRestartPoint(uint32_t index) {
     key_.clear();
     restart_index_ = index;
@@ -161,6 +184,9 @@ class Block::Iter : public Iterator {
     } while (ParseNextKey() && NextEntryOffset() < original);
   }
 
+  // 首先在复活点上做二分查找，
+  // 这里实现的二分查找的结果就是left对应的复活点 Key 是严格小于 target 的最大 Key。
+  // 二分查找完成后跳到复活点处，按顺序恢复每个条目的键值，对比返回。
   void Seek(const Slice& target) override {
     // Binary search in restart array to find the last restart point
     // with a key < target
@@ -247,6 +273,8 @@ class Block::Iter : public Iterator {
     value_.clear();
   }
 
+  // 函数 ParseNextKey，将 current_ 设为下一个键值对的起点，
+  // 通过 DecodeEntry 解析得到需要的长度信息，恢复 key_ 并读取 value_
   bool ParseNextKey() {
     current_ = NextEntryOffset();
     const char* p = data_ + current_;

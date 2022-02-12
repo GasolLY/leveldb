@@ -15,6 +15,10 @@ namespace {
 
 typedef Iterator* (*BlockFunction)(void*, const ReadOptions&, const Slice&);
 
+// Sorted Table 中存储了多个 Data Block，
+// 使用 Index Block 完成对 Data Block 的索引。
+// 二级迭代器的第一级 index_iter_ 完成对 Index Block 的迭代，
+// 第二级 data_iter_ 完成对 Data Block 的迭代
 class TwoLevelIterator : public Iterator {
  public:
   TwoLevelIterator(Iterator* index_iter, BlockFunction block_function,

@@ -38,6 +38,8 @@ TableCache::TableCache(const std::string& dbname, const Options& options,
 
 TableCache::~TableCache() { delete cache_; }
 
+//  TableCache::FindTable 中会根据 file_number 构建缓存的 Key，
+// 首先尝试在缓存中查找，如果找不到则手动的打开文件、构造 Table
 Status TableCache::FindTable(uint64_t file_number, uint64_t file_size,
                              Cache::Handle** handle) {
   Status s;

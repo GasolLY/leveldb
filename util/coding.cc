@@ -142,6 +142,8 @@ bool GetVarint64(Slice* input, uint64_t* value) {
   }
 }
 
+// 解析Slice中的数据。
+// 值得一提的是：通过Slice的remove_prefix()函数来将已经解析过的内容跳过
 bool GetLengthPrefixedSlice(Slice* input, Slice* result) {
   uint32_t len;
   if (GetVarint32(input, &len) && input->size() >= len) {

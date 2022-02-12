@@ -15,6 +15,8 @@ namespace leveldb {
 
 class VersionSet;
 
+// FileMetaData 记录了 .ldb 文件的元信息，
+// 包括允许查找的次数、文件编号 number 和大小 file_size 以及最小和最大的 Key
 struct FileMetaData {
   FileMetaData() : refs(0), allowed_seeks(1 << 30), file_size(0) {}
 
@@ -85,11 +87,11 @@ class VersionEdit {
 
   typedef std::set<std::pair<int, uint64_t>> DeletedFileSet;
 
-  std::string comparator_;
-  uint64_t log_number_;
-  uint64_t prev_log_number_;
-  uint64_t next_file_number_;
-  SequenceNumber last_sequence_;
+  std::string comparator_;          // 比较器的名称
+  uint64_t log_number_;             // 日志编号
+  uint64_t prev_log_number_;        // 上一个日志编号
+  uint64_t next_file_number_;       // 下一个文件编号
+  SequenceNumber last_sequence_;    // 最后的序列号
   bool has_comparator_;
   bool has_log_number_;
   bool has_prev_log_number_;
@@ -97,8 +99,8 @@ class VersionEdit {
   bool has_last_sequence_;
 
   std::vector<std::pair<int, InternalKey>> compact_pointers_;
-  DeletedFileSet deleted_files_;
-  std::vector<std::pair<int, FileMetaData>> new_files_;
+  DeletedFileSet deleted_files_;    // 删除的文件，记录了level和文件号
+  std::vector<std::pair<int, FileMetaData>> new_files_; // 新增的文件，记录了level和FileMetaData
 };
 
 }  // namespace leveldb

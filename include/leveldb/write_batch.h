@@ -30,6 +30,9 @@ namespace leveldb {
 
 class Slice;
 
+// WriteBatch使用批量写来提高性能，支持Put、Delete
+// 综合来看，WriteBatch 将所有的修改和删除操作均存储到一个字符串中，并且提供了内存数据库的迭代接口。
+// 而单个字符串也可以非常方便地进行持久化，这一点也会在日志部分有所体现
 class LEVELDB_EXPORT WriteBatch {
  public:
   class LEVELDB_EXPORT Handler {
@@ -42,6 +45,7 @@ class LEVELDB_EXPORT WriteBatch {
   WriteBatch();
 
   // Intentionally copyable.
+  // 支持拷贝
   WriteBatch(const WriteBatch&) = default;
   WriteBatch& operator=(const WriteBatch&) = default;
 
@@ -67,14 +71,17 @@ class LEVELDB_EXPORT WriteBatch {
   // This runs in O(source size) time. However, the constant factor is better
   // than calling Iterate() over the source batch with a Handler that replicates
   // the operations into this batch.
+  // 将其他WriteBatch合并过来
   void Append(const WriteBatch& source);
 
   // Support for iterating over the contents of a batch.
   Status Iterate(Handler* handler) const;
 
  private:
+  // 预先定义一个友元类、后期则可以在该友元类中直接访问私有变量和方法，
+  // 适合一些不方便暴露出来的内部工具性质的操作
   friend class WriteBatchInternal;
-
+  // WriteBatch的具体数据
   std::string rep_;  // See comment in write_batch.cc for the format of rep_
 };
 

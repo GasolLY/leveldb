@@ -51,6 +51,8 @@ class InternalKey;
 // Value types encoded as the last component of internal keys.
 // DO NOT CHANGE THESE ENUM VALUES: they are embedded in the on-disk
 // data structures.
+// 1字节大小，表示操作是delete还是put。
+// 若delete则操作的数据只有key，put操作则包含key和value
 enum ValueType { kTypeDeletion = 0x0, kTypeValue = 0x1 };
 // kValueTypeForSeek defines the ValueType that should be passed when
 // constructing a ParsedInternalKey object for seeking to a particular
@@ -60,12 +62,15 @@ enum ValueType { kTypeDeletion = 0x0, kTypeValue = 0x1 };
 // ValueType, not the lowest).
 static const ValueType kValueTypeForSeek = kTypeValue;
 
+// 序列号,64位无符号数
 typedef uint64_t SequenceNumber;
 
 // We leave eight bits empty at the bottom so a type and sequence#
 // can be packed together into 64-bits.
+// SequenceNumber的最大值,2^56 -1
 static const SequenceNumber kMaxSequenceNumber = ((0x1ull << 56) - 1);
 
+// 对User Key的封装
 struct ParsedInternalKey {
   Slice user_key;
   SequenceNumber sequence;
@@ -78,17 +83,20 @@ struct ParsedInternalKey {
 };
 
 // Return the length of the encoding of "key".
+// +8是因为额外多了uint_64，高56位保存sequence，低8位保存type,见dbformat.cc
 inline size_t InternalKeyEncodingLength(const ParsedInternalKey& key) {
   return key.user_key.size() + 8;
 }
 
 // Append the serialization of "key" to *result.
+// 将key序列化，追加到result
 void AppendInternalKey(std::string* result, const ParsedInternalKey& key);
 
 // Attempt to parse an internal key from "internal_key".  On success,
 // stores the parsed data in "*result", and returns true.
 //
 // On error, returns false, leaves "*result" in an undefined state.
+// 解析函数
 bool ParseInternalKey(const Slice& internal_key, ParsedInternalKey* result);
 
 // Returns the user key portion of an internal key.
@@ -99,6 +107,7 @@ inline Slice ExtractUserKey(const Slice& internal_key) {
 
 // A comparator for internal keys that uses a specified comparator for
 // the user key portion and breaks ties by decreasing sequence number.
+// 用于比较2个InternalKey(数据内容、合成序列号共同存储于String rep_的类型)
 class InternalKeyComparator : public Comparator {
  private:
   const Comparator* user_comparator_;
@@ -131,8 +140,10 @@ class InternalFilterPolicy : public FilterPolicy {
 // Modules in this directory should keep internal keys wrapped inside
 // the following class instead of plain strings so that we do not
 // incorrectly use string comparisons instead of an InternalKeyComparator.
+// InternalKey存储的信息与ParseInternalKey一致，只是存储的形式不同
 class InternalKey {
  private:
+  // 直接使用String rep_存储User Key和合成序列号
   std::string rep_;
 
  public:
@@ -181,6 +192,7 @@ inline bool ParseInternalKey(const Slice& internal_key,
 }
 
 // A helper class useful for DBImpl::Get()
+// 用于DBImpl::Get()的helper类
 class LookupKey {
  public:
   // Initialize *this for looking up user_key at a snapshot with
@@ -191,6 +203,8 @@ class LookupKey {
   LookupKey& operator=(const LookupKey&) = delete;
 
   ~LookupKey();
+
+  //可以返回三种类型的Key的格式
 
   // Return a key suitable for lookup in a MemTable.
   Slice memtable_key() const { return Slice(start_, end_ - start_); }

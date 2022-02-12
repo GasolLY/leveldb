@@ -19,6 +19,8 @@ namespace leveldb {
 
 class Env;
 
+// LevelDB 中会使用 file_number 给 Sorted Table 编号。
+// 为了提高读取性能、简化使用，LevelDB 提供了 TableCache 用以缓存 Sorted Table 及对应的 .ldb 文件
 class TableCache {
  public:
   TableCache(const std::string& dbname, const Options& options, int entries);

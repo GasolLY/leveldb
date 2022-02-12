@@ -23,18 +23,23 @@
 #include "leveldb/export.h"
 #include "leveldb/slice.h"
 
+//仅依赖Slice
+
 namespace leveldb {
 
 class LEVELDB_EXPORT Cache;
 
 // Create a new cache with a fixed size capacity.  This implementation
 // of Cache uses a least-recently-used eviction policy.
+
+//默认采用LRU替换策略
 LEVELDB_EXPORT Cache* NewLRUCache(size_t capacity);
 
 class LEVELDB_EXPORT Cache {
  public:
   Cache() = default;
 
+  //=delete表示编译器不生成默认构造函数。作用是，避免以下2个函数被调用，避免拷贝
   Cache(const Cache&) = delete;
   Cache& operator=(const Cache&) = delete;
 
@@ -43,6 +48,7 @@ class LEVELDB_EXPORT Cache {
   virtual ~Cache();
 
   // Opaque handle to an entry stored in the cache.
+  //定义的 Handle 仅作为指针类型使用，实际上使用 void * 也并无区别，Handle 增加语意而已
   struct Handle {};
 
   // Insert a mapping from key->value into the cache and assign it
@@ -73,6 +79,7 @@ class LEVELDB_EXPORT Cache {
   // successful Lookup().
   // REQUIRES: handle must not have been released yet.
   // REQUIRES: handle must have been returned by a method on *this.
+  // 获取lookup()操作成功返回的Handle指向的表项中的Value
   virtual void* Value(Handle* handle) = 0;
 
   // If the cache contains entry for key, erase it.  Note that the
@@ -91,6 +98,7 @@ class LEVELDB_EXPORT Cache {
   // Default implementation of Prune() does nothing.  Subclasses are strongly
   // encouraged to override the default implementation.  A future release of
   // leveldb may change Prune() to a pure abstract method.
+  // 修建所有不活跃的表项。适合对内存有限制的应用
   virtual void Prune() {}
 
   // Return an estimate of the combined charges of all elements stored in the

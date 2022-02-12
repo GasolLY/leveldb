@@ -61,6 +61,10 @@ Status Footer::DecodeFrom(Slice* input) {
   return result;
 }
 
+// 对于已经存储的 Sorted Table 文件，提供 ReadOptions 和 BlockHandle 后，
+// 可以将 handle 对应的 Block 内容读取到 BlockContents 中。
+// 该结构体储存 Block 的字节流，以及能否缓存、是否需要手动清理的标记。
+// ReadBlock 的实现非常直接，读取文件对应位置的字节流，进行必要的校验和解压缩。
 Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
                  const BlockHandle& handle, BlockContents* result) {
   result->data = Slice();
@@ -72,6 +76,7 @@ Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
   size_t n = static_cast<size_t>(handle.size());
   char* buf = new char[n + kBlockTrailerSize];
   Slice contents;
+  // 根据Handle存储的offset与size，读取Block内容,并读取1byte type和32bit CRC
   Status s = file->Read(handle.offset(), n + kBlockTrailerSize, &contents, buf);
   if (!s.ok()) {
     delete[] buf;
@@ -83,6 +88,7 @@ Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
   }
 
   // Check the crc of the type and the block contents
+  // 检查CRC校验
   const char* data = contents.data();  // Pointer to where Read put the data
   if (options.verify_checksums) {
     const uint32_t crc = crc32c::Unmask(DecodeFixed32(data + n + 1));
@@ -94,6 +100,7 @@ Status ReadBlock(RandomAccessFile* file, const ReadOptions& options,
     }
   }
 
+  // 将数据读取到BlockContents* result中
   switch (data[n]) {
     case kNoCompression:
       if (data != buf) {

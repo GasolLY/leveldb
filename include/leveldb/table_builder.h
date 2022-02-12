@@ -84,6 +84,10 @@ class LEVELDB_EXPORT TableBuilder {
   void WriteBlock(BlockBuilder* block, BlockHandle* handle);
   void WriteRawBlock(const Slice& data, CompressionType, BlockHandle* handle);
 
+  // Struct Rep定义在.cc文件中
+  // pImpl范式(桥梁模式).
+  // 即使实现部分发生修改，也仅仅会重新编译文件本身
+  // 小的缺点是：访问成员变量时，需要使用rep_->进行多一次寻址
   struct Rep;
   Rep* rep_;
 };

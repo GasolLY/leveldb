@@ -40,8 +40,8 @@ struct TableBuilder::Rep {
   WritableFile* file;
   uint64_t offset;
   Status status;
-  BlockBuilder data_block;
-  BlockBuilder index_block;
+  BlockBuilder data_block;  // 存储键值对数据
+  BlockBuilder index_block; // 存储元数据
   std::string last_key;
   int64_t num_entries;
   bool closed;  // Either Finish() or Abandon() has been called.
@@ -62,6 +62,7 @@ struct TableBuilder::Rep {
   std::string compressed_output;
 };
 
+// 构造函数。初始化rep_对象
 TableBuilder::TableBuilder(const Options& options, WritableFile* file)
     : rep_(new Rep(options, file)) {
   if (rep_->filter_block != nullptr) {
@@ -69,6 +70,7 @@ TableBuilder::TableBuilder(const Options& options, WritableFile* file)
   }
 }
 
+// 析构函数。删除rep_
 TableBuilder::~TableBuilder() {
   assert(rep_->closed);  // Catch errors where caller forgot to call Finish()
   delete rep_->filter_block;
@@ -114,9 +116,11 @@ void TableBuilder::Add(const Slice& key, const Slice& value) {
 
   r->last_key.assign(key.data(), key.size());
   r->num_entries++;
+  // 将键值对写入data_block中
   r->data_block.Add(key, value);
 
   const size_t estimated_block_size = r->data_block.CurrentSizeEstimate();
+  // 当data_block的大小超过阈值(默认4KB)时，将Block Flush(),写入文件
   if (estimated_block_size >= r->options.block_size) {
     Flush();
   }
@@ -195,6 +199,9 @@ void TableBuilder::WriteRawBlock(const Slice& block_contents,
 
 Status TableBuilder::status() const { return rep_->status; }
 
+// 当执行 TableBuilder::Finish 操作时，会将 index_block_ 也写入文件，
+// 其对应的 index_block_handle_ 写到最后的 Footer 里。
+// 这样就完成了 SortedTable 文件的构建。
 Status TableBuilder::Finish() {
   Rep* r = rep_;
   Flush();

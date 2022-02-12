@@ -10,6 +10,7 @@
 namespace leveldb {
 
 namespace {
+//对key进行哈希操作
 static uint32_t BloomHash(const Slice& key) {
   return Hash(key.data(), key.size(), 0xbc9f1d34);
 }
@@ -18,21 +19,26 @@ class BloomFilterPolicy : public FilterPolicy {
  public:
   explicit BloomFilterPolicy(int bits_per_key) : bits_per_key_(bits_per_key) {
     // We intentionally round down to reduce probing cost a little bit
+    // 哈希函数的数目为 bits_per_key * ln2 ，上下限分别为30与1
     k_ = static_cast<size_t>(bits_per_key * 0.69);  // 0.69 =~ ln(2)
     if (k_ < 1) k_ = 1;
     if (k_ > 30) k_ = 30;
   }
 
+  //返回过滤策略的名称
   const char* Name() const override { return "leveldb.BuiltinBloomFilter2"; }
 
   void CreateFilter(const Slice* keys, int n, std::string* dst) const override {
     // Compute bloom filter size (in both bits and bytes)
+    // 根据 keys的数量n 与 每个key需要的比特位数，计算bloom filter的总体大小
     size_t bits = n * bits_per_key_;
 
     // For small n, we can see a very high false positive rate.  Fix it
     // by enforcing a minimum bloom filter length.
+    // Bloom filter的容量过小时，很容易false positive，因此最小容量设置为64
     if (bits < 64) bits = 64;
-
+    
+    //Bloom filter容量大小按字节大小向上取整，即为8bits的倍数
     size_t bytes = (bits + 7) / 8;
     bits = bytes * 8;
 
@@ -80,8 +86,8 @@ class BloomFilterPolicy : public FilterPolicy {
   }
 
  private:
-  size_t bits_per_key_;
-  size_t k_;
+  size_t bits_per_key_; //每一个key需要的bits位数，用于计算过滤器的容量
+  size_t k_;            //表示Bloom Filter中哈希函数的数目
 };
 }  // namespace
 

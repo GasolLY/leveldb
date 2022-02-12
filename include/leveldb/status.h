@@ -20,7 +20,7 @@
 #include "leveldb/slice.h"
 
 namespace leveldb {
-
+//用于记录leveldb中状态信息，保存错误码和对应的字符串错误信息
 class LEVELDB_EXPORT Status {
  public:
   // Create a success status.
@@ -76,6 +76,7 @@ class LEVELDB_EXPORT Status {
   std::string ToString() const;
 
  private:
+  //错误码
   enum Code {
     kOk = 0,
     kNotFound = 1,
